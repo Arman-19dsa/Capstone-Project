@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic Financial Coach</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;500;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">AFC</span>
+      <span class="brand-name">Agentic Financial<br>Coach</span>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-tab="dashboard">
+        <span class="nav-index">01</span> Dashboard
+      </button>
+      <button class="nav-item" data-tab="expense">
+        <span class="nav-index">02</span> Log Expense
+      </button>
+      <button class="nav-item" data-tab="budgets">
+        <span class="nav-index">03</span> Budgets
+      </button>
+      <button class="nav-item" data-tab="goals">
+        <span class="nav-index">04</span> Goals
+      </button>
+      <button class="nav-item" data-tab="tutor">
+        <span class="nav-index">05</span> Literacy Tutor
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <p>Multi-agent financial coach<br>Orchestrator &middot; Analyzer &middot; Planner &middot; Tracker &middot; Tutor</p>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="content">
+
+    <!-- DASHBOARD -->
+    <section class="tab-panel active" id="tab-dashboard">
+      <header class="panel-header">
+        <h1>This Month, at a Glance</h1>
+        <p class="sub">Live status from the Budget Planner and Goal Tracker agents.</p>
+      </header>
+
+      <div class="grid-cards" id="budget-cards">
+        <!-- populated by JS -->
+        <p class="empty-state">No budgets set yet. Head to Budgets to add category limits.</p>
+      </div>
+
+      <h2 class="section-title">Savings Goals</h2>
+      <div class="grid-cards" id="goal-cards">
+        <p class="empty-state">No goals yet. Add one in the Goals tab.</p>
+      </div>
+    </section>
+
+    <!-- ADD EXPENSE -->
+    <section class="tab-panel" id="tab-expense">
+      <header class="panel-header">
+        <h1>Log an Expense</h1>
+        <p class="sub">The Expense Analyzer Agent will categorize it automatically.</p>
+      </header>
+
+      <form class="form-card" id="expense-form">
+        <label>Amount (Rs.)
+          <input type="number" step="0.01" name="amount" required placeholder="250">
+        </label>
+        <label>Description
+          <input type="text" name="description" required placeholder="Swiggy order, dinner">
+        </label>
+        <label>Date
+          <input type="date" name="date" required>
+        </label>
+        <label>Category <span class="hint">(optional — leave blank to auto-categorize)</span>
+          <input type="text" name="category" placeholder="e.g. Food">
+        </label>
+        <button type="submit">Add Expense</button>
+      </form>
+
+      <div id="expense-result" class="result-box hidden"></div>
+
+      <h2 class="section-title">Recent Expenses</h2>
+      <table class="ledger-table" id="expense-table">
+        <thead>
+          <tr><th>Date</th><th>Description</th><th>Category</th><th class="num">Amount</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- BUDGETS -->
+    <section class="tab-panel" id="tab-budgets">
+      <header class="panel-header">
+        <h1>Category Budgets</h1>
+        <p class="sub">Set a monthly limit; the Budget Planner Agent tracks usage against it.</p>
+      </header>
+
+      <form class="form-card" id="budget-form">
+        <label>Category
+          <input type="text" name="category" required placeholder="e.g. Food">
+        </label>
+        <label>Monthly Limit (Rs.)
+          <input type="number" step="1" name="monthly_limit" required placeholder="3000">
+        </label>
+        <button type="submit">Save Budget</button>
+      </form>
+
+      <div id="budget-result" class="result-box hidden"></div>
+    </section>
+
+    <!-- GOALS -->
+    <section class="tab-panel" id="tab-goals">
+      <header class="panel-header">
+        <h1>Savings Goals</h1>
+        <p class="sub">The Goal Tracker Agent computes pacing based on your deadline.</p>
+      </header>
+
+      <form class="form-card" id="goal-form">
+        <label>Goal Title
+          <input type="text" name="title" required placeholder="New laptop">
+        </label>
+        <label>Target Amount (Rs.)
+          <input type="number" step="1" name="target_amount" required placeholder="50000">
+        </label>
+        <label>Deadline <span class="hint">(optional)</span>
+          <input type="date" name="deadline">
+        </label>
+        <button type="submit">Create Goal</button>
+      </form>
+
+      <h2 class="section-title">Add Savings to a Goal</h2>
+      <form class="form-card" id="goal-update-form">
+        <label>Goal ID
+          <input type="number" name="goal_id" required placeholder="1">
+        </label>
+        <label>Amount to Add (Rs.)
+          <input type="number" step="1" name="add_amount" required placeholder="500">
+        </label>
+        <button type="submit">Add Savings</button>
+      </form>
+
+      <div id="goal-result" class="result-box hidden"></div>
+    </section>
+
+    <!-- TUTOR -->
+    <section class="tab-panel" id="tab-tutor">
+      <header class="panel-header">
+        <h1>Financial Literacy Tutor</h1>
+        <p class="sub">Answers are grounded in a curated knowledge base (RAG), not freely generated.</p>
+      </header>
+
+      <div class="chat-window" id="chat-window">
+        <div class="chat-msg assistant">
+          <span class="chat-role">Tutor</span>
+          Ask me things like "what is SIP" or "credit card vs debit card".
+        </div>
+      </div>
+
+      <form class="chat-input-row" id="chat-form">
+        <input type="text" name="message" placeholder="Type your question..." required>
+        <button type="submit">Ask</button>
+      </form>
+    </section>
+
+  </main>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
