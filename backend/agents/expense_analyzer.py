@@ -9,27 +9,69 @@ This mirrors what the synopsis describes: "LLM combined with a
 rule-based categorization layer."
 """
 
+import re
 from llm_client import ask_llm
 
 CATEGORY_KEYWORDS = {
-    "Food": ["zomato", "swiggy", "restaurant", "food", "cafe", "dominos", "mess", "canteen"],
-    "Travel": ["uber", "ola", "rapido", "petrol", "fuel", "bus", "train", "irctc", "flight"],
-    "Shopping": ["amazon", "flipkart", "myntra", "mall", "shopping"],
-    "Subscriptions": ["netflix", "spotify", "prime", "hotstar", "subscription", "recharge"],
-    "Bills & Utilities": ["electricity", "bill", "wifi", "broadband", "rent", "mobile bill"],
-    "Education": ["course", "udemy", "book", "fees", "tuition", "coaching"],
-    "Health": ["medicine", "pharmacy", "hospital", "doctor", "gym"],
-    "Entertainment": ["movie", "bookmyshow", "pvr", "game", "outing"],
+    "Food": [
+        "zomato", "swiggy", "restaurant", "food", "cafe", "dominos", "mess", "canteen",
+        "dhaba", "hotel", "breakfast", "lunch", "dinner", "snacks", "chai", "tea",
+        "coffee", "starbucks", "ccd", "pizza", "burger", "bakery", "sweets", "juice",
+    ],
+    "Travel": [
+        "uber", "ola", "rapido", "petrol", "fuel", "diesel", "bus", "train", "irctc",
+        "flight", "cab", "auto", "rickshaw", "metro", "toll", "parking", "railway",
+        "airport", "indigo", "spicejet", "redbus", "train ticket", "bus ticket",
+        "flight ticket",
+    ],
+    "Shopping": [
+        "amazon", "flipkart", "myntra", "mall", "shopping", "ajio", "meesho",
+        "clothes", "shoes", "electronics", "decathlon", "reliance trends", "d-mart",
+        "dmart", "big bazaar", "grocery", "supermarket",
+    ],
+    "Subscriptions": [
+        "netflix", "spotify", "prime", "hotstar", "subscription", "recharge",
+        "jio", "airtel", "vi ", "youtube premium", "playstation", "xbox", "app store",
+        "google play", "icloud", "apple music",
+    ],
+    "Bills & Utilities": [
+        "electricity", "bill", "wifi", "broadband", "rent", "mobile bill",
+        "water bill", "gas cylinder", "maintenance", "society", "dth", "internet",
+        "postpaid",
+    ],
+    "Education": [
+        "course", "udemy", "book", "fees", "tuition", "coaching", "college",
+        "exam fee", "stationery", "printout", "xerox", "library", "coursera",
+        "certification",
+    ],
+    "Health": [
+        "medicine", "pharmacy", "hospital", "doctor", "gym", "clinic", "dentist",
+        "medplus", "apollo", "1mg", "pathology", "lab test", "health checkup",
+    ],
+    "Entertainment": [
+        "movie", "bookmyshow", "book my show", "pvr", "inox", "game", "outing", "concert",
+        "amusement park", "picnic", "trip", "party",
+    ],
+    "Personal Care": [
+        "salon", "haircut", "spa", "parlour", "cosmetics", "skincare",
+    ],
 }
 
 CATEGORY_LIST = list(CATEGORY_KEYWORDS.keys()) + ["Other"]
 
 
 def categorize_by_rules(description: str):
+    """
+    Matches whole words/phrases only (not substrings), so a keyword like
+    "book" won't wrongly match inside "BookMyShow". Multi-word keywords
+    (e.g. "train ticket") are matched as literal phrases.
+    """
     text = description.lower()
     for category, keywords in CATEGORY_KEYWORDS.items():
-        if any(kw in text for kw in keywords):
-            return category
+        for kw in keywords:
+            pattern = r"\b" + re.escape(kw) + r"\b"
+            if re.search(pattern, text):
+                return category
     return None
 
 
