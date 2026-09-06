@@ -52,8 +52,12 @@
         <p class="sub">Live status from the Budget Planner and Goal Tracker agents.</p>
       </header>
 
+      <button id="report-btn" class="form-card report-btn">
+        Generate This Month's Report
+      </button>
+      <div id="report-box" class="result-box hidden report-box"></div>
+
       <div class="grid-cards" id="budget-cards">
-        <!-- populated by JS -->
         <p class="empty-state">No budgets set yet. Head to Budgets to add category limits.</p>
       </div>
 
@@ -87,6 +91,15 @@
       </form>
 
       <div id="expense-result" class="result-box hidden"></div>
+
+      <h2 class="section-title">Or Import a Bank/UPI Statement (CSV)</h2>
+      <form class="form-card" id="csv-form">
+        <label>CSV File <span class="hint">(columns: date, description, amount — bank statement headers like "Narration" or "Withdrawal Amt." also work)</span>
+          <input type="file" name="file" accept=".csv" required>
+        </label>
+        <button type="submit">Import CSV</button>
+      </form>
+      <div id="csv-result" class="result-box hidden"></div>
 
       <h2 class="section-title">Recent Expenses</h2>
       <table class="ledger-table" id="expense-table">

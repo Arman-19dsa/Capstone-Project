@@ -2,25 +2,23 @@
 main.py
 FastAPI entry point. Run with:
     uvicorn main:app --reload --port 8000
-
-Then open frontend/index.html in a browser (or serve it separately) -
-it calls these endpoints at http://localhost:8000
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db, get_connection
 from models import ExpenseIn, BudgetIn, GoalIn, GoalUpdateIn, ChatIn
-from agents.orchestrator import handle_new_expense, get_dashboard_summary, handle_chat
+from agents.orchestrator import handle_new_expense, get_dashboard_summary, handle_chat, handle_csv_import
 from agents.goal_tracker import add_savings, all_goal_progress
+from csv_import import parse_csv_bytes
+from report_generator import generate_report
 
 app = FastAPI(title="Agentic Financial Learning & Expense Coach")
 
-# Allow the frontend (served from a different port/file) to call this API.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten this before any real deployment
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -31,17 +29,14 @@ def startup():
     init_db()
 
 
-# ---------------- Expenses ----------------
-
 @app.post("/api/expenses")
 def add_expense(expense: ExpenseIn):
-    result = handle_new_expense(
+    return handle_new_expense(
         amount=expense.amount,
         description=expense.description,
         date=expense.date,
         category=expense.category,
     )
-    return result
 
 
 @app.get("/api/expenses")
@@ -52,7 +47,22 @@ def list_expenses():
     return [dict(row) for row in rows]
 
 
-# ---------------- Budgets ----------------
+@app.post("/api/expenses/import")
+async def import_expenses(file: UploadFile = File(...)):
+    if not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Please upload a .csv file")
+
+    file_bytes = await file.read()
+    try:
+        rows = parse_csv_bytes(file_bytes)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Could not parse this CSV file")
+
+    if not rows:
+        raise HTTPException(status_code=400, detail="No readable rows found in this CSV")
+
+    return handle_csv_import(rows)
+
 
 @app.post("/api/budgets")
 def set_budget(budget: BudgetIn):
@@ -74,8 +84,6 @@ def get_budgets_endpoint():
     conn.close()
     return [dict(row) for row in rows]
 
-
-# ---------------- Goals ----------------
 
 @app.post("/api/goals")
 def create_goal(goal: GoalIn):
@@ -101,14 +109,13 @@ def update_goal(goal_id: int, update: GoalUpdateIn):
     return {"message": "Savings updated"}
 
 
-# ---------------- Dashboard ----------------
-
 @app.get("/api/dashboard")
 def dashboard():
     return get_dashboard_summary()
-
-
-# ---------------- Chat / Literacy Tutor ----------------
+@app.get("/api/report")
+def report(period: str = None):
+    """Optional query param: ?period=YYYY-MM (defaults to current month)."""
+    return generate_report(period)
 
 @app.post("/api/chat")
 def chat(chat_in: ChatIn):

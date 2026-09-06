@@ -1,6 +1,5 @@
 // ============================================================
 // app.js — talks to the FastAPI backend at API_BASE.
-// Change API_BASE if your backend runs on a different port/host.
 // ============================================================
 
 const API_BASE = "http://localhost:8000";
@@ -56,6 +55,37 @@ async function loadDashboard() {
   }
 }
 
+// ---------------- Monthly Report ----------------
+
+async function loadReport() {
+  const box = document.getElementById("report-box");
+  box.classList.remove("hidden");
+  box.innerHTML = "Generating report...";
+
+  try {
+    const res = await fetch(`${API_BASE}/api/report`);
+    const data = await res.json();
+
+    let html = `<strong>Report for ${data.period}</strong><br>`;
+    html += `Total spent: Rs.${data.total_spent.toFixed(0)}<br><br>`;
+
+    if (data.category_breakdown.length > 0) {
+      html += "<strong>By category:</strong><br>";
+      data.category_breakdown.forEach((c) => {
+        html += `${c.category}: Rs.${c.total.toFixed(0)} (${c.count} transactions)<br>`;
+      });
+      html += "<br>";
+    }
+
+    html += `<strong>Summary:</strong><br>${data.narrative}`;
+    box.innerHTML = html;
+  } catch (err) {
+    box.innerHTML = "Could not load report. Check the server is running.";
+  }
+}
+
+document.getElementById("report-btn").addEventListener("click", loadReport);
+
 // ---------------- Expenses ----------------
 
 document.getElementById("expense-form").addEventListener("submit", async (e) => {
@@ -100,6 +130,47 @@ async function loadExpenses() {
     </tr>
   `).join("");
 }
+
+// ---------------- CSV Import ----------------
+
+document.getElementById("csv-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const fileInput = form.file;
+
+  const formData = new FormData();
+  formData.append("file", fileInput.files[0]);
+
+  const box = document.getElementById("csv-result");
+  box.classList.remove("hidden");
+  box.innerHTML = "Importing...";
+
+  try {
+    const res = await fetch(`${API_BASE}/api/expenses/import`, {
+      method: "POST",
+      body: formData,
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      box.innerHTML = `Error: ${data.detail}`;
+      return;
+    }
+
+    let html = `Imported ${data.imported} transactions (${data.skipped} skipped).`;
+    if (data.budget_recommendations && data.budget_recommendations.length > 0) {
+      html += "<br><br><strong>Budget alerts:</strong><br>";
+      data.budget_recommendations.forEach((r) => {
+        html += `${r.category}: ${r.tip}<br>`;
+      });
+    }
+    box.innerHTML = html;
+    form.reset();
+    loadExpenses();
+  } catch (err) {
+    box.innerHTML = "Import failed. Check the server is running.";
+  }
+});
 
 // ---------------- Budgets ----------------
 

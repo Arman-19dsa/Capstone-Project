@@ -20,7 +20,7 @@ except ImportError:
     pass
 
 API_KEY = os.getenv("GEMINI_API_KEY")
-MODEL = "gemini-3.6-flash"  # good free-tier default; swap to gemini-2.5-flash-lite for higher rate limits
+MODEL = "gemini-3.6-flash"
 
 _client = None
 if API_KEY:
@@ -32,11 +32,6 @@ if API_KEY:
 
 
 def ask_llm(system_prompt: str, user_prompt: str, max_tokens: int = 400) -> str:
-    """
-    Sends a system + user prompt to Gemini and returns plain text.
-    Falls back to a placeholder string if no API key is configured,
-    so the rest of the app (UI, DB, routing) can still be developed/tested.
-    """
     if _client is None:
         return (
             "[LLM not configured] Add GEMINI_API_KEY to backend/.env to "
@@ -53,5 +48,6 @@ def ask_llm(system_prompt: str, user_prompt: str, max_tokens: int = 400) -> str:
             max_output_tokens=max_tokens,
         ),
     )
-    return (response.text or "").strip()
-
+    text = (response.text or "").strip()
+    text = text.replace("**", "").replace("*", "")
+    return text

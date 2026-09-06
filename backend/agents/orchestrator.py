@@ -1,13 +1,5 @@
 """
 Orchestrator / Planner Agent
-Responsibility: the entry point that coordinates the other four agents.
-
-In this starter version the "planning" is straightforward function
-calls triggered by API routes (add expense -> categorize -> check
-budget -> update goal). As your team progresses, this is the file to
-extend with more autonomous decision-making, e.g. the orchestrator
-itself deciding which agents to call based on LLM-parsed user intent
-rather than a fixed pipeline.
 """
 
 from agents.expense_analyzer import categorize_expense
@@ -18,13 +10,6 @@ from database import get_connection
 
 
 def handle_new_expense(amount: float, description: str, date: str, category: str = None):
-    """
-    Full pipeline for a new expense:
-    1. Expense Analyzer categorizes it (if category not already given)
-    2. Saved to DB
-    3. Budget Planner re-checks status for that category
-    4. Returns the saved expense + any budget recommendation
-    """
     if not category:
         category = categorize_expense(description)
 
@@ -53,8 +38,51 @@ def handle_new_expense(amount: float, description: str, date: str, category: str
     }
 
 
+def handle_csv_import(rows: list):
+    conn = get_connection()
+    imported = 0
+    skipped = 0
+    affected_categories = set()
+
+    for row in rows:
+        try:
+            amount = float(row["amount"])
+            description = row["description"].strip()
+            date = row["date"].strip()
+        except (KeyError, ValueError, AttributeError):
+            skipped += 1
+            continue
+
+        if not description or amount <= 0:
+            skipped += 1
+            continue
+
+        category = row.get("category") or categorize_expense(description)
+        conn.execute(
+            "INSERT INTO expenses (amount, category, description, date) VALUES (?, ?, ?, ?)",
+            (amount, category, description, date),
+        )
+        affected_categories.add(category)
+        imported += 1
+
+    conn.commit()
+    conn.close()
+
+    budget_status = check_budget_status()
+    recommendations = [
+        {"category": b["category"], "tip": generate_recommendation(b)}
+        for b in budget_status
+        if b["category"] in affected_categories and b["status"] != "ok"
+    ]
+
+    return {
+        "imported": imported,
+        "skipped": skipped,
+        "budget_recommendations": recommendations,
+    }
+
+
 def get_dashboard_summary():
-    """Aggregates data from Budget Planner + Goal Tracker for the dashboard view."""
     return {
         "budget_status": check_budget_status(),
         "goals": all_goal_progress(),
@@ -62,5 +90,4 @@ def get_dashboard_summary():
 
 
 def handle_chat(message: str) -> str:
-    """Routes a free-text user question to the Literacy Tutor Agent."""
     return answer_question(message)

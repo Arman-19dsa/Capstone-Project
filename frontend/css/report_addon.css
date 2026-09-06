@@ -1,0 +1,14 @@
+.report-btn {
+  width: 100%;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--accent);
+  text-align: left;
+  margin-bottom: 20px;
+}
+
+.report-btn:hover { background: var(--accent-soft); }
+
+.report-box { max-width: 100%; margin-bottom: 24px; }
