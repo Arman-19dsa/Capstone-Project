@@ -12,3 +12,30 @@
 .report-btn:hover { background: var(--accent-soft); }
 
 .report-box { max-width: 100%; margin-bottom: 24px; }
+.chart-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.chart-card {
+  background: var(--paper-card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+
+.chart-card h3 {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 500;
+  margin: 0 0 12px 0;
+  color: var(--ink);
+}
+
+.chart-card canvas { max-height: 220px; }
+
+@media (max-width: 800px) {
+  .chart-row { grid-template-columns: 1fr; }
+}

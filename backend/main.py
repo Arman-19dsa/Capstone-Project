@@ -13,6 +13,8 @@ from agents.orchestrator import handle_new_expense, get_dashboard_summary, handl
 from agents.goal_tracker import add_savings, all_goal_progress
 from csv_import import parse_csv_bytes
 from report_generator import generate_report
+from charts import get_category_breakdown, get_daily_trend
+
 
 app = FastAPI(title="Agentic Financial Learning & Expense Coach")
 
@@ -116,6 +118,18 @@ def dashboard():
 def report(period: str = None):
     """Optional query param: ?period=YYYY-MM (defaults to current month)."""
     return generate_report(period)
+
+
+# ---------------- Charts ----------------
+
+@app.get("/api/charts/category-breakdown")
+def category_breakdown(period: str = None):
+    return get_category_breakdown(period)
+
+
+@app.get("/api/charts/trend")
+def spending_trend(period: str = None):
+    return get_daily_trend(period)
 
 @app.post("/api/chat")
 def chat(chat_in: ChatIn):

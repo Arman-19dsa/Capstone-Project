@@ -4,6 +4,9 @@
 
 const API_BASE = "http://localhost:8000";
 
+let categoryChart = null;
+let trendChart = null;
+
 // ---------------- Tab navigation ----------------
 
 document.querySelectorAll(".nav-item").forEach((btn) => {
@@ -14,7 +17,10 @@ document.querySelectorAll(".nav-item").forEach((btn) => {
     btn.classList.add("active");
     document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
 
-    if (btn.dataset.tab === "dashboard") loadDashboard();
+    if (btn.dataset.tab === "dashboard") {
+      loadDashboard();
+      loadCharts();
+    }
     if (btn.dataset.tab === "expense") loadExpenses();
   });
 });
@@ -53,6 +59,48 @@ async function loadDashboard() {
       </div>
     `).join("");
   }
+}
+
+// ---------------- Charts ----------------
+
+async function loadCharts() {
+  const catRes = await fetch(`${API_BASE}/api/charts/category-breakdown`);
+  const catData = await catRes.json();
+
+  const trendRes = await fetch(`${API_BASE}/api/charts/trend`);
+  const trendData = await trendRes.json();
+
+  const catCtx = document.getElementById("category-chart").getContext("2d");
+  if (categoryChart) categoryChart.destroy();
+  categoryChart = new Chart(catCtx, {
+    type: "doughnut",
+    data: {
+      labels: catData.map((c) => c.category),
+      datasets: [{
+        data: catData.map((c) => c.total),
+        backgroundColor: ["#3F6C51", "#B5763B", "#A6432B", "#7C8A80", "#16211C", "#DCD7C9", "#8FA98E", "#C98F5E", "#5E7A6C"],
+      }],
+    },
+    options: { plugins: { legend: { position: "bottom" } } },
+  });
+
+  const trendCtx = document.getElementById("trend-chart").getContext("2d");
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart(trendCtx, {
+    type: "line",
+    data: {
+      labels: trendData.map((d) => d.date),
+      datasets: [{
+        label: "Daily Spend",
+        data: trendData.map((d) => d.total),
+        borderColor: "#3F6C51",
+        backgroundColor: "rgba(63,108,81,0.1)",
+        tension: 0.3,
+        fill: true,
+      }],
+    },
+    options: { plugins: { legend: { display: false } } },
+  });
 }
 
 // ---------------- Monthly Report ----------------
@@ -266,3 +314,4 @@ document.getElementById("chat-form").addEventListener("submit", async (e) => {
 // ---------------- Initial load ----------------
 
 loadDashboard();
+loadCharts();
