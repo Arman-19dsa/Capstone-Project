@@ -8,13 +8,12 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db, get_connection
-from models import ExpenseIn, BudgetIn, GoalIn, GoalUpdateIn, ChatIn
+from models import ExpenseIn, ExpenseUpdateIn, BudgetIn, GoalIn, GoalUpdateIn, ChatIn
 from agents.orchestrator import handle_new_expense, get_dashboard_summary, handle_chat, handle_csv_import
 from agents.goal_tracker import add_savings, all_goal_progress
 from csv_import import parse_csv_bytes
 from report_generator import generate_report
 from charts import get_category_breakdown, get_daily_trend
-
 
 app = FastAPI(title="Agentic Financial Learning & Expense Coach")
 
@@ -31,14 +30,17 @@ def startup():
     init_db()
 
 
+# ---------------- Expenses ----------------
+
 @app.post("/api/expenses")
 def add_expense(expense: ExpenseIn):
-    return handle_new_expense(
+    result = handle_new_expense(
         amount=expense.amount,
         description=expense.description,
         date=expense.date,
         category=expense.category,
     )
+    return result
 
 
 @app.get("/api/expenses")
@@ -49,8 +51,69 @@ def list_expenses():
     return [dict(row) for row in rows]
 
 
+@app.put("/api/expenses/{expense_id}")
+def update_expense(expense_id: int, update: ExpenseUpdateIn):
+    """
+    Partial update — only fields the user actually changed are sent.
+    Re-runs categorization only if the description changed and no
+    explicit category was given, so a manual category override isn't
+    silently overwritten by an unrelated edit (e.g. fixing the amount).
+    """
+    conn = get_connection()
+    existing = conn.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,)).fetchone()
+    if not existing:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Expense not found")
+
+    new_amount = update.amount if update.amount is not None else existing["amount"]
+    new_description = update.description if update.description is not None else existing["description"]
+    new_date = update.date if update.date is not None else existing["date"]
+
+    if update.category is not None:
+        new_category = update.category
+    elif update.description is not None and update.description != existing["description"]:
+        from agents.expense_analyzer import categorize_expense
+        new_category = categorize_expense(update.description)
+    else:
+        new_category = existing["category"]
+
+    conn.execute(
+        "UPDATE expenses SET amount = ?, category = ?, description = ?, date = ? WHERE id = ?",
+        (new_amount, new_category, new_description, new_date, expense_id),
+    )
+    conn.commit()
+    conn.close()
+
+    return {
+        "id": expense_id,
+        "amount": new_amount,
+        "category": new_category,
+        "description": new_description,
+        "date": new_date,
+    }
+
+
+@app.delete("/api/expenses/{expense_id}")
+def delete_expense(expense_id: int):
+    conn = get_connection()
+    existing = conn.execute("SELECT id FROM expenses WHERE id = ?", (expense_id,)).fetchone()
+    if not existing:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Expense not found")
+
+    conn.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Expense deleted", "id": expense_id}
+
+
 @app.post("/api/expenses/import")
 async def import_expenses(file: UploadFile = File(...)):
+    """
+    Accepts a CSV file (bank/UPI statement export) and bulk-imports
+    transactions through the same categorization + budget-check pipeline
+    used for manual entries.
+    """
     if not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="Please upload a .csv file")
 
@@ -63,8 +126,11 @@ async def import_expenses(file: UploadFile = File(...)):
     if not rows:
         raise HTTPException(status_code=400, detail="No readable rows found in this CSV")
 
-    return handle_csv_import(rows)
+    result = handle_csv_import(rows)
+    return result
 
+
+# ---------------- Budgets ----------------
 
 @app.post("/api/budgets")
 def set_budget(budget: BudgetIn):
@@ -86,6 +152,8 @@ def get_budgets_endpoint():
     conn.close()
     return [dict(row) for row in rows]
 
+
+# ---------------- Goals ----------------
 
 @app.post("/api/goals")
 def create_goal(goal: GoalIn):
@@ -111,12 +179,21 @@ def update_goal(goal_id: int, update: GoalUpdateIn):
     return {"message": "Savings updated"}
 
 
+# ---------------- Dashboard ----------------
+
 @app.get("/api/dashboard")
 def dashboard():
     return get_dashboard_summary()
+
+
+# ---------------- Reports ----------------
+
 @app.get("/api/report")
 def report(period: str = None):
-    """Optional query param: ?period=YYYY-MM (defaults to current month)."""
+    """
+    Returns a monthly summary report.
+    Optional query param: ?period=YYYY-MM (defaults to current month).
+    """
     return generate_report(period)
 
 
@@ -130,6 +207,9 @@ def category_breakdown(period: str = None):
 @app.get("/api/charts/trend")
 def spending_trend(period: str = None):
     return get_daily_trend(period)
+
+
+# ---------------- Chat / Literacy Tutor ----------------
 
 @app.post("/api/chat")
 def chat(chat_in: ChatIn):

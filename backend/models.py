@@ -1,8 +1,3 @@
-"""
-models.py
-Pydantic schemas used for request validation and response shaping.
-"""
-
 from pydantic import BaseModel
 from typing import Optional
 
@@ -10,16 +5,15 @@ from typing import Optional
 class ExpenseIn(BaseModel):
     amount: float
     description: str
-    date: str  # format: YYYY-MM-DD
-    category: Optional[str] = None  # if not given, Expense Analyzer Agent assigns it
-
-
-class ExpenseOut(BaseModel):
-    id: int
-    amount: float
-    category: str
-    description: str
     date: str
+    category: Optional[str] = None
+
+
+class ExpenseUpdateIn(BaseModel):
+    amount: Optional[float] = None
+    description: Optional[str] = None
+    date: Optional[str] = None
+    category: Optional[str] = None
 
 
 class BudgetIn(BaseModel):
