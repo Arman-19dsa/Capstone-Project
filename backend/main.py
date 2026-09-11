@@ -13,7 +13,13 @@ from agents.orchestrator import handle_new_expense, get_dashboard_summary, handl
 from agents.goal_tracker import add_savings, all_goal_progress
 from csv_import import parse_csv_bytes
 from report_generator import generate_report
-from charts import get_category_breakdown, get_daily_trend
+from charts import (
+    get_category_breakdown,
+    get_daily_trend,
+    get_day_of_week_pattern,
+    get_month_over_month,
+    get_key_stats,
+)
 
 app = FastAPI(title="Agentic Financial Learning & Expense Coach")
 
@@ -34,13 +40,12 @@ def startup():
 
 @app.post("/api/expenses")
 def add_expense(expense: ExpenseIn):
-    result = handle_new_expense(
+    return handle_new_expense(
         amount=expense.amount,
         description=expense.description,
         date=expense.date,
         category=expense.category,
     )
-    return result
 
 
 @app.get("/api/expenses")
@@ -53,12 +58,6 @@ def list_expenses():
 
 @app.put("/api/expenses/{expense_id}")
 def update_expense(expense_id: int, update: ExpenseUpdateIn):
-    """
-    Partial update — only fields the user actually changed are sent.
-    Re-runs categorization only if the description changed and no
-    explicit category was given, so a manual category override isn't
-    silently overwritten by an unrelated edit (e.g. fixing the amount).
-    """
     conn = get_connection()
     existing = conn.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,)).fetchone()
     if not existing:
@@ -109,11 +108,6 @@ def delete_expense(expense_id: int):
 
 @app.post("/api/expenses/import")
 async def import_expenses(file: UploadFile = File(...)):
-    """
-    Accepts a CSV file (bank/UPI statement export) and bulk-imports
-    transactions through the same categorization + budget-check pipeline
-    used for manual entries.
-    """
     if not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="Please upload a .csv file")
 
@@ -126,8 +120,7 @@ async def import_expenses(file: UploadFile = File(...)):
     if not rows:
         raise HTTPException(status_code=400, detail="No readable rows found in this CSV")
 
-    result = handle_csv_import(rows)
-    return result
+    return handle_csv_import(rows)
 
 
 # ---------------- Budgets ----------------
@@ -190,14 +183,11 @@ def dashboard():
 
 @app.get("/api/report")
 def report(period: str = None):
-    """
-    Returns a monthly summary report.
-    Optional query param: ?period=YYYY-MM (defaults to current month).
-    """
+    """Optional query param: ?period=YYYY-MM (defaults to current month)."""
     return generate_report(period)
 
 
-# ---------------- Charts ----------------
+# ---------------- Charts & Insights ----------------
 
 @app.get("/api/charts/category-breakdown")
 def category_breakdown(period: str = None):
@@ -207,6 +197,21 @@ def category_breakdown(period: str = None):
 @app.get("/api/charts/trend")
 def spending_trend(period: str = None):
     return get_daily_trend(period)
+
+
+@app.get("/api/charts/day-of-week")
+def day_of_week(period: str = None):
+    return get_day_of_week_pattern(period)
+
+
+@app.get("/api/charts/month-over-month")
+def month_over_month(period: str = None):
+    return get_month_over_month(period)
+
+
+@app.get("/api/charts/key-stats")
+def key_stats(period: str = None):
+    return get_key_stats(period)
 
 
 # ---------------- Chat / Literacy Tutor ----------------

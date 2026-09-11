@@ -6,6 +6,8 @@ const API_BASE = "http://localhost:8000";
 
 let categoryChart = null;
 let trendChart = null;
+let dowChart = null;
+let momChart = null;
 
 // ---------------- Tab navigation ----------------
 
@@ -61,7 +63,7 @@ async function loadDashboard() {
   }
 }
 
-// ---------------- Charts ----------------
+// ---------------- Charts & Insights ----------------
 
 async function loadCharts() {
   const catRes = await fetch(`${API_BASE}/api/charts/category-breakdown`);
@@ -69,6 +71,30 @@ async function loadCharts() {
 
   const trendRes = await fetch(`${API_BASE}/api/charts/trend`);
   const trendData = await trendRes.json();
+
+  const dowRes = await fetch(`${API_BASE}/api/charts/day-of-week`);
+  const dowData = await dowRes.json();
+
+  const momRes = await fetch(`${API_BASE}/api/charts/month-over-month`);
+  const momData = await momRes.json();
+
+  const statsRes = await fetch(`${API_BASE}/api/charts/key-stats`);
+  const statsData = await statsRes.json();
+
+  const strip = document.getElementById("insight-strip");
+  let insights = [];
+
+  if (momData.percent_change !== null) {
+    const direction = momData.percent_change >= 0 ? "up" : "down";
+    insights.push(`Spending is ${direction} ${Math.abs(momData.percent_change)}% vs last month`);
+  }
+  if (statsData.average_daily_spend > 0) {
+    insights.push(`Avg Rs.${statsData.average_daily_spend.toFixed(0)}/day this month`);
+  }
+  if (statsData.biggest_expense) {
+    insights.push(`Biggest expense: ${statsData.biggest_expense.description} (Rs.${statsData.biggest_expense.amount.toFixed(0)})`);
+  }
+  strip.innerHTML = insights.map((i) => `<div class="insight-pill">${i}</div>`).join("");
 
   const catCtx = document.getElementById("category-chart").getContext("2d");
   if (categoryChart) categoryChart.destroy();
@@ -97,6 +123,36 @@ async function loadCharts() {
         backgroundColor: "rgba(63,108,81,0.1)",
         tension: 0.3,
         fill: true,
+      }],
+    },
+    options: { plugins: { legend: { display: false } } },
+  });
+
+  const dowCtx = document.getElementById("dow-chart").getContext("2d");
+  if (dowChart) dowChart.destroy();
+  dowChart = new Chart(dowCtx, {
+    type: "bar",
+    data: {
+      labels: dowData.map((d) => d.day.slice(0, 3)),
+      datasets: [{
+        label: "Total Spend",
+        data: dowData.map((d) => d.total),
+        backgroundColor: "#B5763B",
+      }],
+    },
+    options: { plugins: { legend: { display: false } } },
+  });
+
+  const momCtx = document.getElementById("mom-chart").getContext("2d");
+  if (momChart) momChart.destroy();
+  momChart = new Chart(momCtx, {
+    type: "bar",
+    data: {
+      labels: [momData.previous_period, momData.current_period],
+      datasets: [{
+        label: "Total Spend",
+        data: [momData.previous_total, momData.current_total],
+        backgroundColor: ["#7C8A80", "#3F6C51"],
       }],
     },
     options: { plugins: { legend: { display: false } } },
@@ -175,8 +231,59 @@ async function loadExpenses() {
       <td>${exp.description}</td>
       <td><span class="cat-pill">${exp.category}</span></td>
       <td class="num">Rs.${exp.amount.toFixed(2)}</td>
+      <td class="actions-cell">
+        <button class="icon-btn" onclick="editExpense(${exp.id}, ${exp.amount}, '${exp.description.replace(/'/g, "\\'")}', '${exp.date}')">Edit</button>
+        <button class="icon-btn danger" onclick="deleteExpense(${exp.id})">Delete</button>
+      </td>
     </tr>
   `).join("");
+}
+
+async function editExpense(id, currentAmount, currentDescription, currentDate) {
+  const newAmount = prompt("Amount (Rs.):", currentAmount);
+  if (newAmount === null) return;
+
+  const newDescription = prompt("Description:", currentDescription);
+  if (newDescription === null) return;
+
+  const newDate = prompt("Date (YYYY-MM-DD):", currentDate);
+  if (newDate === null) return;
+
+  const payload = {};
+  if (parseFloat(newAmount) !== currentAmount) payload.amount = parseFloat(newAmount);
+  if (newDescription !== currentDescription) payload.description = newDescription;
+  if (newDate !== currentDate) payload.date = newDate;
+
+  if (Object.keys(payload).length === 0) return;
+
+  const res = await fetch(`${API_BASE}/api/expenses/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    alert("Could not update expense.");
+    return;
+  }
+
+  loadExpenses();
+  loadDashboard();
+  loadCharts();
+}
+
+async function deleteExpense(id) {
+  if (!confirm("Delete this expense?")) return;
+
+  const res = await fetch(`${API_BASE}/api/expenses/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    alert("Could not delete expense.");
+    return;
+  }
+
+  loadExpenses();
+  loadDashboard();
+  loadCharts();
 }
 
 // ---------------- CSV Import ----------------

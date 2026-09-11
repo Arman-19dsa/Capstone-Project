@@ -39,3 +39,40 @@
 @media (max-width: 800px) {
   .chart-row { grid-template-columns: 1fr; }
 }
+
+.actions-cell {
+  white-space: nowrap;
+}
+
+.icon-btn {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 4px 10px;
+  cursor: pointer;
+  color: var(--ink-soft);
+  margin-right: 6px;
+}
+
+.icon-btn:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+
+.icon-btn.danger:hover { background: var(--over-soft); color: var(--over); border-color: var(--over); }
+
+.insight-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.insight-pill {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: 999px;
+}
