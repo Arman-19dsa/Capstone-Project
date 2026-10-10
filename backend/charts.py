@@ -1,17 +1,9 @@
 """
 charts.py
-Aggregates expense data for the Dashboard's visualizations:
-- category breakdown (doughnut)
-- daily spending trend (line)
-- day-of-week spending pattern (bar) -- a genuine behavioural insight,
-  not just a restated total: it answers "which days do I overspend on?"
-- month-over-month comparison -- current vs previous month total
-- key stat callouts: average daily spend, biggest single transaction,
-  and the single highest-spending day
+Per-user aggregations for the Dashboard charts and insight pills.
 """
 
-from datetime import datetime, date
-import calendar
+from datetime import datetime
 from database import get_connection
 
 
@@ -26,44 +18,39 @@ def _previous_year_month(year_month: str) -> str:
     return f"{year}-{month - 1:02d}"
 
 
-def get_category_breakdown(year_month: str = None):
+def get_category_breakdown(user_id: int, year_month: str = None):
     if not year_month:
         year_month = _current_year_month()
     conn = get_connection()
     rows = conn.execute(
         "SELECT category, SUM(amount) as total FROM expenses "
-        "WHERE date LIKE ? GROUP BY category ORDER BY total DESC",
-        (f"{year_month}%",),
+        "WHERE user_id = ? AND date LIKE ? GROUP BY category ORDER BY total DESC",
+        (user_id, f"{year_month}%"),
     ).fetchall()
     conn.close()
     return [{"category": r["category"], "total": r["total"]} for r in rows]
 
 
-def get_daily_trend(year_month: str = None):
+def get_daily_trend(user_id: int, year_month: str = None):
     if not year_month:
         year_month = _current_year_month()
     conn = get_connection()
     rows = conn.execute(
         "SELECT date, SUM(amount) as total FROM expenses "
-        "WHERE date LIKE ? GROUP BY date ORDER BY date ASC",
-        (f"{year_month}%",),
+        "WHERE user_id = ? AND date LIKE ? GROUP BY date ORDER BY date ASC",
+        (user_id, f"{year_month}%"),
     ).fetchall()
     conn.close()
     return [{"date": r["date"], "total": r["total"]} for r in rows]
 
 
-def get_day_of_week_pattern(year_month: str = None):
-    """
-    Returns total spend grouped by day of the week (Monday..Sunday) for
-    the given month, so the user can see behavioural patterns like
-    'I consistently overspend on weekends' rather than just a daily total.
-    """
+def get_day_of_week_pattern(user_id: int, year_month: str = None):
     if not year_month:
         year_month = _current_year_month()
     conn = get_connection()
     rows = conn.execute(
-        "SELECT date, amount FROM expenses WHERE date LIKE ?",
-        (f"{year_month}%",),
+        "SELECT date, amount FROM expenses WHERE user_id = ? AND date LIKE ?",
+        (user_id, f"{year_month}%"),
     ).fetchall()
     conn.close()
 
@@ -73,38 +60,33 @@ def get_day_of_week_pattern(year_month: str = None):
     for row in rows:
         try:
             d = datetime.strptime(row["date"], "%Y-%m-%d").date()
-            day_name = day_names[d.weekday()]
-            totals[day_name] += row["amount"]
+            totals[day_names[d.weekday()]] += row["amount"]
         except ValueError:
             continue
 
     return [{"day": day, "total": round(totals[day], 2)} for day in day_names]
 
 
-def get_month_over_month(year_month: str = None):
-    """
-    Compares total spend in the given month against the previous
-    calendar month, returning both totals and the percent change.
-    """
+def get_month_over_month(user_id: int, year_month: str = None):
     if not year_month:
         year_month = _current_year_month()
     previous_month = _previous_year_month(year_month)
 
     conn = get_connection()
     current_total = conn.execute(
-        "SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE date LIKE ?",
-        (f"{year_month}%",),
+        "SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE user_id = ? AND date LIKE ?",
+        (user_id, f"{year_month}%"),
     ).fetchone()["total"]
     previous_total = conn.execute(
-        "SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE date LIKE ?",
-        (f"{previous_month}%",),
+        "SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE user_id = ? AND date LIKE ?",
+        (user_id, f"{previous_month}%"),
     ).fetchone()["total"]
     conn.close()
 
     if previous_total > 0:
         percent_change = round(((current_total - previous_total) / previous_total) * 100, 1)
     elif current_total > 0:
-        percent_change = None  # no previous baseline to compare against
+        percent_change = None
     else:
         percent_change = 0.0
 
@@ -117,19 +99,14 @@ def get_month_over_month(year_month: str = None):
     }
 
 
-def get_key_stats(year_month: str = None):
-    """
-    Returns a small set of headline stats for the month: average daily
-    spend, the single biggest transaction, and the single highest
-    total-spend day.
-    """
+def get_key_stats(user_id: int, year_month: str = None):
     if not year_month:
         year_month = _current_year_month()
 
     conn = get_connection()
     rows = conn.execute(
-        "SELECT date, description, amount FROM expenses WHERE date LIKE ?",
-        (f"{year_month}%",),
+        "SELECT date, description, amount FROM expenses WHERE user_id = ? AND date LIKE ?",
+        (user_id, f"{year_month}%"),
     ).fetchall()
     conn.close()
 

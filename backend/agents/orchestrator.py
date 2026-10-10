@@ -1,7 +1,3 @@
-"""
-Orchestrator / Planner Agent
-"""
-
 from agents.expense_analyzer import categorize_expense
 from agents.budget_planner import check_budget_status, generate_recommendation
 from agents.goal_tracker import all_goal_progress
@@ -9,20 +5,20 @@ from agents.literacy_tutor import answer_question
 from database import get_connection
 
 
-def handle_new_expense(amount: float, description: str, date: str, category: str = None):
+def handle_new_expense(user_id: int, amount: float, description: str, date: str, category: str = None):
     if not category:
         category = categorize_expense(description)
 
     conn = get_connection()
     cur = conn.execute(
-        "INSERT INTO expenses (amount, category, description, date) VALUES (?, ?, ?, ?)",
-        (amount, category, description, date),
+        "INSERT INTO expenses (user_id, amount, category, description, date) VALUES (?, ?, ?, ?, ?)",
+        (user_id, amount, category, description, date),
     )
     conn.commit()
     expense_id = cur.lastrowid
     conn.close()
 
-    budget_status = check_budget_status()
+    budget_status = check_budget_status(user_id)
     matching = next((b for b in budget_status if b["category"] == category), None)
     recommendation = generate_recommendation(matching) if matching else None
 
@@ -38,7 +34,7 @@ def handle_new_expense(amount: float, description: str, date: str, category: str
     }
 
 
-def handle_csv_import(rows: list):
+def handle_csv_import(user_id: int, rows: list):
     conn = get_connection()
     imported = 0
     skipped = 0
@@ -59,8 +55,8 @@ def handle_csv_import(rows: list):
 
         category = row.get("category") or categorize_expense(description)
         conn.execute(
-            "INSERT INTO expenses (amount, category, description, date) VALUES (?, ?, ?, ?)",
-            (amount, category, description, date),
+            "INSERT INTO expenses (user_id, amount, category, description, date) VALUES (?, ?, ?, ?, ?)",
+            (user_id, amount, category, description, date),
         )
         affected_categories.add(category)
         imported += 1
@@ -68,7 +64,7 @@ def handle_csv_import(rows: list):
     conn.commit()
     conn.close()
 
-    budget_status = check_budget_status()
+    budget_status = check_budget_status(user_id)
     recommendations = [
         {"category": b["category"], "tip": generate_recommendation(b)}
         for b in budget_status
@@ -82,10 +78,10 @@ def handle_csv_import(rows: list):
     }
 
 
-def get_dashboard_summary():
+def get_dashboard_summary(user_id: int):
     return {
-        "budget_status": check_budget_status(),
-        "goals": all_goal_progress(),
+        "budget_status": check_budget_status(user_id),
+        "goals": all_goal_progress(user_id),
     }
 
 

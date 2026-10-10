@@ -1,35 +1,33 @@
-"""
-Budget Planner Agent
-"""
-
 from datetime import datetime
 from database import get_connection
 from llm_client import ask_llm
 
 
-def get_month_spend_by_category(year_month: str):
+def get_month_spend_by_category(user_id: int, year_month: str):
     conn = get_connection()
     rows = conn.execute(
         "SELECT category, SUM(amount) as total FROM expenses "
-        "WHERE date LIKE ? GROUP BY category",
-        (f"{year_month}%",),
+        "WHERE user_id = ? AND date LIKE ? GROUP BY category",
+        (user_id, f"{year_month}%"),
     ).fetchall()
     conn.close()
     return {row["category"]: row["total"] for row in rows}
 
 
-def get_budgets():
+def get_budgets(user_id: int):
     conn = get_connection()
-    rows = conn.execute("SELECT category, monthly_limit FROM budgets").fetchall()
+    rows = conn.execute(
+        "SELECT category, monthly_limit FROM budgets WHERE user_id = ?", (user_id,)
+    ).fetchall()
     conn.close()
     return {row["category"]: row["monthly_limit"] for row in rows}
 
 
-def check_budget_status(year_month: str = None):
+def check_budget_status(user_id: int, year_month: str = None):
     if not year_month:
         year_month = datetime.now().strftime("%Y-%m")
-    spend = get_month_spend_by_category(year_month)
-    budgets = get_budgets()
+    spend = get_month_spend_by_category(user_id, year_month)
+    budgets = get_budgets(user_id)
 
     status = []
     for category, limit in budgets.items():

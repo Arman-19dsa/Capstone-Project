@@ -2,6 +2,11 @@ from pydantic import BaseModel
 from typing import Optional
 
 
+class AuthIn(BaseModel):
+    username: str
+    password: str
+
+
 class ExpenseIn(BaseModel):
     amount: float
     description: str

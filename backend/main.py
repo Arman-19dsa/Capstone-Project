@@ -1,14 +1,21 @@
 """
 main.py
 FastAPI entry point. Run with:
-    uvicorn main:app --reload --port 8000
+    python -m uvicorn main:app --reload --port 8000
+
+Every data endpoint requires a logged-in user (Authorization: Bearer <token>)
+and only ever reads or writes that user's own rows.
 """
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db, get_connection
-from models import ExpenseIn, ExpenseUpdateIn, BudgetIn, GoalIn, GoalUpdateIn, ChatIn
+from models import AuthIn, ExpenseIn, ExpenseUpdateIn, BudgetIn, GoalIn, GoalUpdateIn, ChatIn
+from auth import (
+    register_user, login_user, create_session, get_current_user,
+    extract_token, delete_session, get_username,
+)
 from agents.orchestrator import handle_new_expense, get_dashboard_summary, handle_chat, handle_csv_import
 from agents.goal_tracker import add_savings, all_goal_progress
 from csv_import import parse_csv_bytes
@@ -36,11 +43,37 @@ def startup():
     init_db()
 
 
+# ---------------- Auth ----------------
+
+@app.post("/api/auth/register")
+def register(body: AuthIn):
+    user_id, username = register_user(body.username, body.password)
+    return {"token": create_session(user_id), "username": username}
+
+
+@app.post("/api/auth/login")
+def login(body: AuthIn):
+    user_id, username = login_user(body.username, body.password)
+    return {"token": create_session(user_id), "username": username}
+
+
+@app.post("/api/auth/logout")
+def logout(authorization: str = Header(None)):
+    delete_session(extract_token(authorization))
+    return {"message": "Logged out"}
+
+
+@app.get("/api/auth/me")
+def me(user_id: int = Depends(get_current_user)):
+    return {"username": get_username(user_id)}
+
+
 # ---------------- Expenses ----------------
 
 @app.post("/api/expenses")
-def add_expense(expense: ExpenseIn):
+def add_expense(expense: ExpenseIn, user_id: int = Depends(get_current_user)):
     return handle_new_expense(
+        user_id=user_id,
         amount=expense.amount,
         description=expense.description,
         date=expense.date,
@@ -49,17 +82,23 @@ def add_expense(expense: ExpenseIn):
 
 
 @app.get("/api/expenses")
-def list_expenses():
+def list_expenses(user_id: int = Depends(get_current_user)):
     conn = get_connection()
-    rows = conn.execute("SELECT * FROM expenses ORDER BY date DESC, id DESC").fetchall()
+    rows = conn.execute(
+        "SELECT id, amount, category, description, date FROM expenses "
+        "WHERE user_id = ? ORDER BY date DESC, id DESC",
+        (user_id,),
+    ).fetchall()
     conn.close()
     return [dict(row) for row in rows]
 
 
 @app.put("/api/expenses/{expense_id}")
-def update_expense(expense_id: int, update: ExpenseUpdateIn):
+def update_expense(expense_id: int, update: ExpenseUpdateIn, user_id: int = Depends(get_current_user)):
     conn = get_connection()
-    existing = conn.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,)).fetchone()
+    existing = conn.execute(
+        "SELECT * FROM expenses WHERE id = ? AND user_id = ?", (expense_id, user_id)
+    ).fetchone()
     if not existing:
         conn.close()
         raise HTTPException(status_code=404, detail="Expense not found")
@@ -77,8 +116,9 @@ def update_expense(expense_id: int, update: ExpenseUpdateIn):
         new_category = existing["category"]
 
     conn.execute(
-        "UPDATE expenses SET amount = ?, category = ?, description = ?, date = ? WHERE id = ?",
-        (new_amount, new_category, new_description, new_date, expense_id),
+        "UPDATE expenses SET amount = ?, category = ?, description = ?, date = ? "
+        "WHERE id = ? AND user_id = ?",
+        (new_amount, new_category, new_description, new_date, expense_id, user_id),
     )
     conn.commit()
     conn.close()
@@ -93,21 +133,21 @@ def update_expense(expense_id: int, update: ExpenseUpdateIn):
 
 
 @app.delete("/api/expenses/{expense_id}")
-def delete_expense(expense_id: int):
+def delete_expense(expense_id: int, user_id: int = Depends(get_current_user)):
     conn = get_connection()
-    existing = conn.execute("SELECT id FROM expenses WHERE id = ?", (expense_id,)).fetchone()
-    if not existing:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Expense not found")
-
-    conn.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
+    cur = conn.execute(
+        "DELETE FROM expenses WHERE id = ? AND user_id = ?", (expense_id, user_id)
+    )
     conn.commit()
+    deleted = cur.rowcount > 0
     conn.close()
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Expense not found")
     return {"message": "Expense deleted", "id": expense_id}
 
 
 @app.post("/api/expenses/import")
-async def import_expenses(file: UploadFile = File(...)):
+async def import_expenses(file: UploadFile = File(...), user_id: int = Depends(get_current_user)):
     if not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="Please upload a .csv file")
 
@@ -120,18 +160,18 @@ async def import_expenses(file: UploadFile = File(...)):
     if not rows:
         raise HTTPException(status_code=400, detail="No readable rows found in this CSV")
 
-    return handle_csv_import(rows)
+    return handle_csv_import(user_id, rows)
 
 
 # ---------------- Budgets ----------------
 
 @app.post("/api/budgets")
-def set_budget(budget: BudgetIn):
+def set_budget(budget: BudgetIn, user_id: int = Depends(get_current_user)):
     conn = get_connection()
     conn.execute(
-        "INSERT INTO budgets (category, monthly_limit) VALUES (?, ?) "
-        "ON CONFLICT(category) DO UPDATE SET monthly_limit = excluded.monthly_limit",
-        (budget.category, budget.monthly_limit),
+        "INSERT INTO budgets (user_id, category, monthly_limit) VALUES (?, ?, ?) "
+        "ON CONFLICT(user_id, category) DO UPDATE SET monthly_limit = excluded.monthly_limit",
+        (user_id, budget.category, budget.monthly_limit),
     )
     conn.commit()
     conn.close()
@@ -139,9 +179,11 @@ def set_budget(budget: BudgetIn):
 
 
 @app.get("/api/budgets")
-def get_budgets_endpoint():
+def get_budgets_endpoint(user_id: int = Depends(get_current_user)):
     conn = get_connection()
-    rows = conn.execute("SELECT * FROM budgets").fetchall()
+    rows = conn.execute(
+        "SELECT id, category, monthly_limit FROM budgets WHERE user_id = ?", (user_id,)
+    ).fetchall()
     conn.close()
     return [dict(row) for row in rows]
 
@@ -149,11 +191,11 @@ def get_budgets_endpoint():
 # ---------------- Goals ----------------
 
 @app.post("/api/goals")
-def create_goal(goal: GoalIn):
+def create_goal(goal: GoalIn, user_id: int = Depends(get_current_user)):
     conn = get_connection()
     cur = conn.execute(
-        "INSERT INTO goals (title, target_amount, deadline) VALUES (?, ?, ?)",
-        (goal.title, goal.target_amount, goal.deadline),
+        "INSERT INTO goals (user_id, title, target_amount, deadline) VALUES (?, ?, ?, ?)",
+        (user_id, goal.title, goal.target_amount, goal.deadline),
     )
     conn.commit()
     goal_id = cur.lastrowid
@@ -162,67 +204,74 @@ def create_goal(goal: GoalIn):
 
 
 @app.get("/api/goals")
-def list_goals():
-    return all_goal_progress()
+def list_goals(user_id: int = Depends(get_current_user)):
+    return all_goal_progress(user_id)
 
 
 @app.post("/api/goals/{goal_id}/add")
-def update_goal(goal_id: int, update: GoalUpdateIn):
-    add_savings(goal_id, update.add_amount)
+def update_goal(goal_id: int, update: GoalUpdateIn, user_id: int = Depends(get_current_user)):
+    if not add_savings(user_id, goal_id, update.add_amount):
+        raise HTTPException(status_code=404, detail="Goal not found")
     return {"message": "Savings updated"}
 
 
 # ---------------- Dashboard ----------------
 
 @app.get("/api/dashboard")
-def dashboard():
-    return get_dashboard_summary()
+def dashboard(user_id: int = Depends(get_current_user)):
+    return get_dashboard_summary(user_id)
 
 
 # ---------------- Reports ----------------
 
 @app.get("/api/report")
-def report(period: str = None):
+def report(period: str = None, user_id: int = Depends(get_current_user)):
     """Optional query param: ?period=YYYY-MM (defaults to current month)."""
-    return generate_report(period)
+    return generate_report(user_id, period)
 
 
 # ---------------- Charts & Insights ----------------
 
 @app.get("/api/charts/category-breakdown")
-def category_breakdown(period: str = None):
-    return get_category_breakdown(period)
+def category_breakdown(period: str = None, user_id: int = Depends(get_current_user)):
+    return get_category_breakdown(user_id, period)
 
 
 @app.get("/api/charts/trend")
-def spending_trend(period: str = None):
-    return get_daily_trend(period)
+def spending_trend(period: str = None, user_id: int = Depends(get_current_user)):
+    return get_daily_trend(user_id, period)
 
 
 @app.get("/api/charts/day-of-week")
-def day_of_week(period: str = None):
-    return get_day_of_week_pattern(period)
+def day_of_week(period: str = None, user_id: int = Depends(get_current_user)):
+    return get_day_of_week_pattern(user_id, period)
 
 
 @app.get("/api/charts/month-over-month")
-def month_over_month(period: str = None):
-    return get_month_over_month(period)
+def month_over_month(period: str = None, user_id: int = Depends(get_current_user)):
+    return get_month_over_month(user_id, period)
 
 
 @app.get("/api/charts/key-stats")
-def key_stats(period: str = None):
-    return get_key_stats(period)
+def key_stats(period: str = None, user_id: int = Depends(get_current_user)):
+    return get_key_stats(user_id, period)
 
 
 # ---------------- Chat / Literacy Tutor ----------------
 
 @app.post("/api/chat")
-def chat(chat_in: ChatIn):
+def chat(chat_in: ChatIn, user_id: int = Depends(get_current_user)):
     reply = handle_chat(chat_in.message)
 
     conn = get_connection()
-    conn.execute("INSERT INTO chat_history (role, message) VALUES ('user', ?)", (chat_in.message,))
-    conn.execute("INSERT INTO chat_history (role, message) VALUES ('assistant', ?)", (reply,))
+    conn.execute(
+        "INSERT INTO chat_history (user_id, role, message) VALUES (?, 'user', ?)",
+        (user_id, chat_in.message),
+    )
+    conn.execute(
+        "INSERT INTO chat_history (user_id, role, message) VALUES (?, 'assistant', ?)",
+        (user_id, reply),
+    )
     conn.commit()
     conn.close()
 
@@ -230,9 +279,12 @@ def chat(chat_in: ChatIn):
 
 
 @app.get("/api/chat/history")
-def chat_history():
+def chat_history(user_id: int = Depends(get_current_user)):
     conn = get_connection()
-    rows = conn.execute("SELECT * FROM chat_history ORDER BY id ASC").fetchall()
+    rows = conn.execute(
+        "SELECT role, message, created_at FROM chat_history WHERE user_id = ? ORDER BY id ASC",
+        (user_id,),
+    ).fetchall()
     conn.close()
     return [dict(row) for row in rows]
 

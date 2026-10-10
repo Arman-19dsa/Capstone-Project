@@ -1,35 +1,28 @@
-"""
-Goal Tracker Agent
-Responsibility: track progress toward savings goals and tell the user
-whether they are on pace to hit their deadline.
-"""
-
 from datetime import datetime, date
 from database import get_connection
 
 
-def get_goals():
+def get_goals(user_id: int):
     conn = get_connection()
-    rows = conn.execute("SELECT * FROM goals").fetchall()
+    rows = conn.execute("SELECT * FROM goals WHERE user_id = ?", (user_id,)).fetchall()
     conn.close()
     return [dict(row) for row in rows]
 
 
-def add_savings(goal_id: int, amount: float):
+def add_savings(user_id: int, goal_id: int, amount: float) -> bool:
+    """Returns False if the goal does not exist or belongs to another user."""
     conn = get_connection()
-    conn.execute(
-        "UPDATE goals SET saved_amount = saved_amount + ? WHERE id = ?",
-        (amount, goal_id),
+    cur = conn.execute(
+        "UPDATE goals SET saved_amount = saved_amount + ? WHERE id = ? AND user_id = ?",
+        (amount, goal_id, user_id),
     )
     conn.commit()
+    updated = cur.rowcount > 0
     conn.close()
+    return updated
 
 
 def goal_progress(goal: dict) -> dict:
-    """
-    Computes percent complete and a simple pacing message
-    (are they on track given time remaining vs. amount remaining).
-    """
     target = goal["target_amount"]
     saved = goal["saved_amount"]
     pct = round((saved / target) * 100, 1) if target > 0 else 0
@@ -61,5 +54,5 @@ def goal_progress(goal: dict) -> dict:
     }
 
 
-def all_goal_progress():
-    return [goal_progress(g) for g in get_goals()]
+def all_goal_progress(user_id: int):
+    return [goal_progress(g) for g in get_goals(user_id)]
